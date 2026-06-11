@@ -1,8 +1,8 @@
 import React, { useEffect, useState } from 'react';
-import { BookingData, TicketData, EventData, SePayTransaction } from './types';
+import { BookingData, TicketData, EventData, SePayTransaction, UserRoleData } from './types';
 import { 
   Ticket, ShieldCheck, DoorOpen, LayoutDashboard, Search, Mail, 
-  HelpCircle, CreditCard, ChevronRight, Phone, User, Landmark, Sparkles
+  HelpCircle, CreditCard, ChevronRight, Phone, User, Landmark, Sparkles, LogOut, LogIn
 } from 'lucide-react';
 import EventCard from './components/EventCard';
 import BookingForm from './components/BookingForm';
@@ -22,8 +22,29 @@ export default function App() {
   const [bookings, setBookings] = useState<BookingData[]>([]);
   const [tickets, setTickets] = useState<TicketData[]>([]);
   const [transactions, setTransactions] = useState<SePayTransaction[]>([]);
+  const [users, setUsers] = useState<UserRoleData[]>([]);
   
   const [isLoading, setIsLoading] = useState(true);
+
+  // Authentication states
+  const [auth, setAuth] = useState<{ email: string, role: 'admin' | 'staff' } | null>(() => {
+    const saved = localStorage.getItem('auth_session');
+    return saved ? JSON.parse(saved) : null;
+  });
+  const [showLoginModal, setShowLoginModal] = useState(false);
+  const [loginEmail, setLoginEmail] = useState('');
+  const [loginPassword, setLoginPassword] = useState('');
+  const [loginStep, setLoginStep] = useState<'email' | 'password_set' | 'password_enter'>('email');
+  const [pendingRole, setPendingRole] = useState<AppRole | null>(null);
+  const [loginError, setLoginError] = useState('');
+
+  useEffect(() => {
+    if (auth) {
+      localStorage.setItem('auth_session', JSON.stringify(auth));
+    } else {
+      localStorage.removeItem('auth_session');
+    }
+  }, [auth]);
 
   // Buyer purchase flow states
   const [selectedEvent, setSelectedEvent] = useState<EventData | null>(null);
@@ -42,21 +63,169 @@ export default function App() {
   const fetchAllData = async () => {
     setIsLoading(true);
     try {
-      const [eventsRes, bookingsRes, ticketsRes, transactionsRes] = await Promise.all([
+      const [eventsRes, bookingsRes, ticketsRes, transactionsRes, usersRes] = await Promise.all([
         fetch('/api/events'),
         fetch('/api/bookings'),
         fetch('/api/tickets'),
-        fetch('/api/transactions')
+        fetch('/api/transactions'),
+        fetch('/api/admin/users')
       ]);
 
       if (eventsRes.ok) setEvents(await eventsRes.json());
       if (bookingsRes.ok) setBookings(await bookingsRes.json());
       if (ticketsRes.ok) setTickets(await ticketsRes.json());
       if (transactionsRes.ok) setTransactions(await transactionsRes.json());
+      if (usersRes.ok) setUsers(await usersRes.json());
     } catch (e) {
       console.error("Error loaded database systems:", e);
     } finally {
       setIsLoading(false);
+    }
+  };
+
+  const handleLoginSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setLoginError('');
+
+    try {
+      if (loginStep === 'email') {
+        if (!loginEmail.trim()) return;
+        
+        // Step 1: Check login status
+        const res = await fetch('/api/auth/login', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email: loginEmail })
+        });
+        
+        if (res.ok) {
+          const data = await res.json();
+          if (data.status === 'first_time') {
+            setLoginStep('password_set');
+          } else if (data.status === 'need_password') {
+            setLoginStep('password_enter');
+          }
+        } else {
+          const data = await res.json();
+          setLoginError(data.error || "Email không hợp lệ hoặc không có quyền truy cập.");
+          sounds.playBeepError();
+        }
+      } 
+      else if (loginStep === 'password_set') {
+        if (!loginPassword.trim()) return;
+        
+        // Step 2a: First time login - set password
+        const res = await fetch('/api/auth/login', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email: loginEmail, setPassword: loginPassword })
+        });
+        
+        if (res.ok) {
+          const data = await res.json();
+          setAuth({ email: data.email, role: data.role });
+          setShowLoginModal(false);
+          setLoginEmail('');
+          setLoginPassword('');
+          setLoginStep('email');
+          
+          if (pendingRole === 'admin') {
+            if (data.role === 'admin') {
+              setRole('admin');
+            } else {
+              alert("Tài khoản của bạn chỉ có quyền Soát vé, không có quyền Quản trị.");
+              setRole('buyer');
+            }
+          } else if (pendingRole === 'gate') {
+            setRole('gate');
+          } else {
+            setRole(data.role === 'admin' ? 'admin' : 'gate');
+          }
+          sounds.playSuccess();
+        } else {
+          const data = await res.json();
+          setLoginError(data.error || "Thiết lập mật khẩu thất bại.");
+          sounds.playBeepError();
+        }
+      } 
+      else if (loginStep === 'password_enter') {
+        if (!loginPassword.trim()) return;
+        
+        // Step 2b: Subsequent login - verify password
+        const res = await fetch('/api/auth/login', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email: loginEmail, password: loginPassword })
+        });
+        
+        if (res.ok) {
+          const data = await res.json();
+          setAuth({ email: data.email, role: data.role });
+          setShowLoginModal(false);
+          setLoginEmail('');
+          setLoginPassword('');
+          setLoginStep('email');
+          
+          if (pendingRole === 'admin') {
+            if (data.role === 'admin') {
+              setRole('admin');
+            } else {
+              alert("Tài khoản của bạn chỉ có quyền Soát vé, không có quyền Quản trị.");
+              setRole('buyer');
+            }
+          } else if (pendingRole === 'gate') {
+            setRole('gate');
+          } else {
+            setRole(data.role === 'admin' ? 'admin' : 'gate');
+          }
+          sounds.playSuccess();
+        } else {
+          const data = await res.json();
+          setLoginError(data.error || "Mật khẩu không chính xác.");
+          sounds.playBeepError();
+        }
+      }
+    } catch (err: any) {
+      setLoginError("Lỗi kết nối mạng: " + err.message);
+      sounds.playBeepError();
+    }
+  };
+
+  const handleAddUserRole = async (email: string, role: 'admin' | 'staff') => {
+    try {
+      const res = await fetch('/api/admin/users', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email, role })
+      });
+      if (res.ok) {
+        const usersRes = await fetch('/api/admin/users');
+        if (usersRes.ok) setUsers(await usersRes.json());
+        return { success: true };
+      } else {
+        const data = await res.json();
+        return { success: false, error: data.error || "Không thể cấp quyền." };
+      }
+    } catch (err: any) {
+      return { success: false, error: err.message };
+    }
+  };
+
+  const handleRemoveUserRole = async (email: string) => {
+    try {
+      const res = await fetch(`/api/admin/users/${encodeURIComponent(email)}`, {
+        method: 'DELETE'
+      });
+      if (res.ok) {
+        const usersRes = await fetch('/api/admin/users');
+        if (usersRes.ok) setUsers(await usersRes.json());
+        return { success: true };
+      } else {
+        const data = await res.json();
+        return { success: false, error: data.error || "Không thể thu hồi quyền." };
+      }
+    } catch (err: any) {
+      return { success: false, error: err.message };
     }
   };
 
@@ -241,54 +410,90 @@ export default function App() {
             </div>
           </div>
 
-          {/* Quick roles switcher tabs navigation */}
-          <nav className="flex items-center gap-1 bg-slate-100 p-1.5 rounded-2xl">
-            <button
-              onClick={() => { setRole('buyer'); handleResetCheckoutFlow(); }}
-              className={`px-4 py-2.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 ${
-                role === 'buyer' 
-                  ? 'bg-white text-slate-950 shadow-sm' 
-                  : 'text-slate-500 hover:text-slate-800'
-              }`}
-            >
-              Đặt Vé
-            </button>
+          <div className="flex items-center gap-3 ml-auto flex-wrap">
+            {/* Authenticated user status */}
+            {auth && (
+              <div className="flex items-center gap-2 text-[11px] font-bold text-slate-600 bg-slate-100/70 border border-slate-200 px-3 py-2 rounded-2xl shadow-sm">
+                <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
+                <span>{auth.email} ({auth.role === 'admin' ? 'Quản trị' : 'Soát vé'})</span>
+                <button
+                  onClick={() => { setAuth(null); setRole('buyer'); sounds.playBeepOk(); }}
+                  className="text-rose-600 hover:text-rose-805 ml-1.5 p-0.5 hover:bg-rose-50 rounded transition flex items-center gap-0.5"
+                  title="Đăng xuất"
+                >
+                  <LogOut className="w-3.5 h-3.5" />
+                </button>
+              </div>
+            )}
 
-            <button
-              onClick={() => { setRole('lookup'); setLookedUpBookings([]); setLookedUpTickets([]); setLookupEmail(''); }}
-              className={`px-4 py-2.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 ${
-                role === 'lookup' 
-                  ? 'bg-white text-slate-950 shadow-sm' 
-                  : 'text-slate-500 hover:text-slate-800'
-              }`}
-            >
-              Tra Cứu Vé
-            </button>
+            {/* Quick roles switcher tabs navigation */}
+            <nav className="flex items-center gap-1 bg-slate-100 p-1.5 rounded-2xl">
+              <button
+                onClick={() => { setRole('buyer'); handleResetCheckoutFlow(); }}
+                className={`px-4 py-2.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 ${
+                  role === 'buyer' 
+                    ? 'bg-white text-slate-950 shadow-sm' 
+                    : 'text-slate-500 hover:text-slate-800'
+                }`}
+              >
+                Đặt Vé
+              </button>
 
-            <button
-              onClick={() => setRole('gate')}
-              className={`px-4 py-2.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 ${
-                role === 'gate' 
-                  ? 'bg-white text-slate-950 shadow-sm' 
-                  : 'text-slate-500 hover:text-slate-800'
-              }`}
-            >
-              <DoorOpen className="w-3.5 h-3.5" />
-              Soát Vé Cổng
-            </button>
+              <button
+                onClick={() => { setRole('lookup'); setLookedUpBookings([]); setLookedUpTickets([]); setLookupEmail(''); }}
+                className={`px-4 py-2.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 ${
+                  role === 'lookup' 
+                    ? 'bg-white text-slate-950 shadow-sm' 
+                    : 'text-slate-500 hover:text-slate-800'
+                }`}
+              >
+                Tra Cứu Vé
+              </button>
 
-            <button
-              onClick={() => setRole('admin')}
-              className={`px-4 py-2.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 ${
-                role === 'admin' 
-                  ? 'bg-white text-slate-950 shadow-sm' 
-                  : 'text-slate-500 hover:text-slate-800'
-              }`}
-            >
-              <LayoutDashboard className="w-3.5 h-3.5" />
-              Quản Trị
-            </button>
-          </nav>
+              {auth && (auth.role === 'admin' || auth.role === 'staff') && (
+                <button
+                  onClick={() => setRole('gate')}
+                  className={`px-4 py-2.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 ${
+                    role === 'gate' 
+                      ? 'bg-white text-slate-950 shadow-sm' 
+                      : 'text-slate-500 hover:text-slate-800'
+                  }`}
+                >
+                  <DoorOpen className="w-3.5 h-3.5" />
+                  Soát Vé Cổng
+                </button>
+              )}
+
+              {auth && auth.role === 'admin' && (
+                <button
+                  onClick={() => setRole('admin')}
+                  className={`px-4 py-2.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 ${
+                    role === 'admin' 
+                      ? 'bg-white text-slate-950 shadow-sm' 
+                      : 'text-slate-500 hover:text-slate-800'
+                  }`}
+                >
+                  <LayoutDashboard className="w-3.5 h-3.5" />
+                  Quản Trị
+                </button>
+              )}
+
+              {!auth && (
+                <button
+                  onClick={() => {
+                    setPendingRole(null);
+                    setLoginStep('email');
+                    setShowLoginModal(true);
+                    sounds.playBeepOk();
+                  }}
+                  className="px-4 py-2.5 rounded-xl text-xs font-bold text-indigo-700 hover:bg-white hover:shadow-sm transition-all flex items-center gap-1.5 bg-indigo-50/50 border border-indigo-100/30 active:scale-95"
+                >
+                  <LogIn className="w-3.5 h-3.5 text-indigo-600" />
+                  Đăng Nhập
+                </button>
+              )}
+            </nav>
+          </div>
         </div>
       </header>
 
@@ -523,6 +728,10 @@ export default function App() {
               onManualCancel={handleManualCancelBooking}
               onResetDb={handleResetDatabaseAction}
               isLoading={isLoading}
+              users={users}
+              onAddUser={handleAddUserRole}
+              onRemoveUser={handleRemoveUserRole}
+              currentUserEmail={auth?.email}
             />
           </div>
         )}
@@ -534,6 +743,88 @@ export default function App() {
         <p>© 2026 METATIX VIỆT NAM • XỬ LÝ VIETQR & SEPAY TỰ ĐỘNG KHÔNG CHỜ BILL</p>
         <p className="mt-1 text-slate-350">Xây dựng bền vững trên Express fullstack & React 19 sandboxed containers</p>
       </footer>
+
+      {/* Login Modal */}
+      {showLoginModal && (
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-3xl max-w-sm w-full p-6 shadow-2xl border border-slate-100 space-y-4 animate-scaleIn">
+            <div className="text-center space-y-2">
+              <div className="inline-block bg-indigo-50 text-indigo-750 p-3 rounded-full border border-indigo-100">
+                <ShieldCheck className="w-8 h-8 text-indigo-650" />
+              </div>
+              <h3 className="text-base font-black uppercase text-slate-900">Đăng nhập nhân viên</h3>
+              <p className="text-xs text-slate-500">
+                {loginStep === 'email' && "Nhập email được phân quyền của bạn để tiếp tục."}
+                {loginStep === 'password_set' && "Tài khoản chưa đặt mật khẩu. Vui lòng thiết lập mật khẩu cho lần đầu đăng nhập."}
+                {loginStep === 'password_enter' && "Nhập mật khẩu tài khoản của bạn."}
+              </p>
+            </div>
+            
+            <form onSubmit={handleLoginSubmit} className="space-y-4">
+              {loginStep === 'email' ? (
+                <div className="space-y-1">
+                  <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Địa chỉ Email</label>
+                  <input
+                    type="email"
+                    required
+                    placeholder="nhanvien@gmail.com..."
+                    value={loginEmail}
+                    onChange={(e) => { setLoginEmail(e.target.value); setLoginError(''); }}
+                    className="w-full bg-slate-55 border border-slate-200 rounded-xl px-4 py-2 text-xs focus:outline-none focus:ring-2 focus:ring-indigo-600 text-slate-800 font-medium"
+                  />
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  <div className="bg-slate-50 border border-slate-150 rounded-xl p-2.5 text-center text-xs font-semibold text-slate-600">
+                    {loginEmail}
+                  </div>
+                  
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">
+                      {loginStep === 'password_set' ? "Đặt Mật Khẩu Mới" : "Mật Khẩu"}
+                    </label>
+                    <input
+                      type="password"
+                      required
+                      placeholder={loginStep === 'password_set' ? "Tối thiểu 4 ký tự..." : "Nhập mật khẩu..."}
+                      value={loginPassword}
+                      onChange={(e) => { setLoginPassword(e.target.value); setLoginError(''); }}
+                      className="w-full bg-slate-55 border border-slate-205 rounded-xl px-4 py-2 text-xs focus:outline-none focus:ring-2 focus:ring-indigo-600 text-slate-800 font-medium"
+                    />
+                  </div>
+                </div>
+              )}
+              
+              {loginError && (
+                <p className="text-[10px] text-rose-600 font-bold text-center bg-rose-50 border border-rose-100 py-1.5 rounded-lg">{loginError}</p>
+              )}
+              
+              <div className="flex gap-2.5 pt-2">
+                <button
+                  type="button"
+                  onClick={() => { 
+                    setShowLoginModal(false); 
+                    setPendingRole(null); 
+                    setLoginEmail(''); 
+                    setLoginPassword(''); 
+                    setLoginStep('email'); 
+                    setLoginError(''); 
+                  }}
+                  className="flex-1 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs uppercase py-2.5 rounded-xl transition"
+                >
+                  Hủy bỏ
+                </button>
+                <button
+                  type="submit"
+                  className="flex-1 bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs uppercase py-2.5 rounded-xl transition shadow shadow-indigo-600/20 active:scale-95"
+                >
+                  {loginStep === 'email' ? "Tiếp tục" : (loginStep === 'password_set' ? "Đặt & Đăng nhập" : "Đăng nhập")}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
 
     </div>
   );

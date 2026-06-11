@@ -1,7 +1,10 @@
 import express, { Request, Response } from 'express';
 import path from 'path';
+import dotenv from 'dotenv';
 import { createServer as createViteServer } from 'vite';
 import { db, BookingData, SePayTransaction } from './src/server-db';
+
+dotenv.config();
 
 async function startServer() {
   const app = express();
@@ -11,18 +14,18 @@ async function startServer() {
   app.use(express.json());
 
   // 1. Get List of Events
-  app.get('/api/events', (req: Request, res: Response) => {
+  app.get('/api/events', async (req: Request, res: Response) => {
     try {
-      res.json(db.getEvents());
+      res.json(await db.getEvents());
     } catch (e: any) {
       res.status(500).json({ error: e.message });
     }
   });
 
   // 2. Get Event Detail
-  app.get('/api/events/:id', (req: Request, res: Response) => {
+  app.get('/api/events/:id', async (req: Request, res: Response) => {
     try {
-      const event = db.getEventById(req.params.id);
+      const event = await db.getEventById(req.params.id);
       if (!event) {
         res.status(404).json({ error: "Sự kiện không tồn tại" });
         return;
@@ -34,7 +37,7 @@ async function startServer() {
   });
 
   // 3. Create a Booking (Đặt vé)
-  app.post('/api/booking', (req: Request, res: Response) => {
+  app.post('/api/booking', async (req: Request, res: Response) => {
     try {
       const { eventId, customerName, customerEmail, customerPhone, ticketType, quantity } = req.body;
 
@@ -43,7 +46,7 @@ async function startServer() {
         return;
       }
 
-      const event = db.getEventById(eventId);
+      const event = await db.getEventById(eventId);
       if (!event) {
         res.status(444).json({ error: "Sự kiện được chọn không tồn tại." });
         return;
@@ -85,7 +88,7 @@ async function startServer() {
         paidAt: null
       };
 
-      db.addBooking(booking);
+      await db.addBooking(booking);
       res.status(201).json(booking);
     } catch (e: any) {
       res.status(500).json({ error: e.message });
@@ -93,18 +96,18 @@ async function startServer() {
   });
 
   // 4. View Booking Details and Status Poll
-  app.get('/api/booking/:id', (req: Request, res: Response) => {
+  app.get('/api/booking/:id', async (req: Request, res: Response) => {
     try {
-      const booking = db.getBookingById(req.params.id);
+      const booking = await db.getBookingById(req.params.id);
       if (!booking) {
-        res.status(404).json({ error: "Không tìm thấy đơn đặt vé." });
+        res.status(444).json({ error: "Không tìm thấy đơn đặt vé." });
         return;
       }
       
       // If paid, fetch associated tickets too for convenience
       let tickets = [];
       if (booking.status === 'PAID') {
-        tickets = db.getTickets().filter(t => t.bookingId === booking.id);
+        tickets = (await db.getTickets()).filter(t => t.bookingId === booking.id);
       }
 
       res.json({ booking, tickets });
@@ -114,35 +117,34 @@ async function startServer() {
   });
 
   // 5. Get All Bookings (Admin Panel)
-  app.get('/api/bookings', (req: Request, res: Response) => {
+  app.get('/api/bookings', async (req: Request, res: Response) => {
     try {
-      res.json(db.getBookings());
+      res.json(await db.getBookings());
     } catch (e: any) {
       res.status(500).json({ error: e.message });
     }
   });
 
   // 6. Get All Generated Tickets (Admin)
-  app.get('/api/tickets', (req: Request, res: Response) => {
+  app.get('/api/tickets', async (req: Request, res: Response) => {
     try {
-      res.json(db.getTickets());
+      res.json(await db.getTickets());
     } catch (e: any) {
       res.status(500).json({ error: e.message });
     }
   });
 
   // 7. Get All SePay Transactions list (Admin Audit Logs)
-  app.get('/api/transactions', (req: Request, res: Response) => {
+  app.get('/api/transactions', async (req: Request, res: Response) => {
     try {
-      res.json(db.getTransactions());
+      res.json(await db.getTransactions());
     } catch (e: any) {
       res.status(500).json({ error: e.message });
     }
   });
 
   // 8. SePay Bank Transfer Webhook
-  // Doc: SePay triggers this endpoint on any incoming bank transfer
-  app.post('/api/sepay-webhook', (req: Request, res: Response) => {
+  app.post('/api/sepay-webhook', async (req: Request, res: Response) => {
     try {
       console.log("[SePay Webhook Received]:", req.body);
       
@@ -153,12 +155,10 @@ async function startServer() {
         return;
       }
 
-      // Fallback: search for custom matched code inside description content
-      // Description is often lowercase/case-insensitive and might contain leading/trailing text, e.g. "CK MUA VE DH123456"
       const description = (content || "").toUpperCase();
       
       // Look up all bookings
-      const bookings = db.getBookings();
+      const bookings = await db.getBookings();
       const pendingBookings = bookings.filter(b => b.status === "PENDING");
       
       // Find matching paymentCode, e.g., DH123456
@@ -178,7 +178,7 @@ async function startServer() {
         createdAt: new Date().toISOString()
       };
       
-      db.addTransaction(sepayTx);
+      await db.addTransaction(sepayTx);
 
       if (!matchedBooking) {
         console.warn(`[SePay Webhook Warning]: Code mismatched for content "${content}" and amount ${transferAmount}`);
@@ -189,7 +189,7 @@ async function startServer() {
         return;
       }
 
-      // Check if transferred amount is at least equal to total booking price (allowing larger tips, but checking minimum)
+      // Check if transferred amount is at least equal to total booking price
       if (Number(transferAmount) < matchedBooking.totalAmount) {
         console.warn(`[SePay Webhook Warning]: Insufficient transfer amount for booking ${matchedBooking.id}. Expected: ${matchedBooking.totalAmount}, Got: ${transferAmount}`);
         res.json({
@@ -200,7 +200,7 @@ async function startServer() {
       }
 
       // Transition booking status to paid
-      const updatedBooking = db.updateBookingStatus(matchedBooking.id, 'PAID', {
+      const updatedBooking = await db.updateBookingStatus(matchedBooking.id, 'PAID', {
         sepayTransactionId: sepayTx.id,
         gateway: sepayTx.gateway,
         referenceCode: sepayTx.referenceCode,
@@ -222,7 +222,7 @@ async function startServer() {
   });
 
   // 9. QR Code Verification (Soát vé tại cổng)
-  app.post('/api/tickets/checkin', (req: Request, res: Response) => {
+  app.post('/api/tickets/checkin', async (req: Request, res: Response) => {
     try {
       const { ticketId, gate } = req.body;
       if (!ticketId) {
@@ -230,15 +230,15 @@ async function startServer() {
         return;
       }
 
-      const result = db.checkInTicket(ticketId, gate || "Cổng Chính");
+      const result = await db.checkInTicket(ticketId, gate || "Cổng Chính");
       res.json(result);
     } catch (e: any) {
       res.status(500).json({ error: e.message });
     }
   });
 
-  // 10. Manual Webhook Simulation Handler (Nút giả lập chuyển tiền của khách trên UI)
-  app.post('/api/simulate-transfer', (req: Request, res: Response) => {
+  // 10. Manual Webhook Simulation Handler
+  app.post('/api/simulate-transfer', async (req: Request, res: Response) => {
     try {
       const { paymentCode, amount, gateway } = req.body;
       if (!paymentCode || !amount) {
@@ -246,7 +246,6 @@ async function startServer() {
         return;
       }
 
-      // Construct a SePay-like payload and send to inward webhook flow
       const randomRef = 'REF' + Math.floor(10000000 + Math.random() * 90000000);
       const randomSePayId = String(Math.floor(1000000 + Math.random() * 9000000));
       
@@ -261,12 +260,11 @@ async function startServer() {
         referenceCode: randomRef
       };
 
-      // Call local sepay webhook logic directly
-      // Better yet, trigger the api sepay webhook helper locally
       console.log("[Simulation Triggered]: Simulating SePay transaction for code", paymentCode);
       
-      // Look up local bookings to see match
-      const booking = db.getBookings().find(b => b.paymentCode.toUpperCase() === paymentCode.toUpperCase() && b.status === 'PENDING');
+      // Look up bookings
+      const bookings = await db.getBookings();
+      const booking = bookings.find(b => b.paymentCode.toUpperCase() === paymentCode.toUpperCase() && b.status === 'PENDING');
       
       // Save Transaction
       const sepayTx: SePayTransaction = {
@@ -281,7 +279,7 @@ async function startServer() {
         code: paymentCode.toUpperCase(),
         createdAt: new Date().toISOString()
       };
-      db.addTransaction(sepayTx);
+      await db.addTransaction(sepayTx);
 
       if (!booking) {
         res.json({
@@ -300,7 +298,7 @@ async function startServer() {
       }
 
       // Update Booking
-      db.updateBookingStatus(booking.id, 'PAID', {
+      await db.updateBookingStatus(booking.id, 'PAID', {
         sepayTransactionId: sepayTx.id,
         gateway: sepayTx.gateway,
         referenceCode: sepayTx.referenceCode,
@@ -319,11 +317,142 @@ async function startServer() {
     }
   });
 
-  // 11. Reset Dashboard Database (Admin action)
-  app.post('/api/admin/reset', (req: Request, res: Response) => {
+  // 11. Reset Dashboard Database
+  app.post('/api/admin/reset', async (req: Request, res: Response) => {
     try {
-      const ok = db.resetDb();
+      const ok = await db.resetDb();
       res.json({ success: ok, message: "Cơ sở dữ liệu đặt vé đã được khôi phục về trạng thái hạt giống ban đầu." });
+    } catch (e: any) {
+      res.status(500).json({ error: e.message });
+    }
+  });
+
+  // 12. User Authentication (Đăng Nhập)
+  app.post('/api/auth/login', async (req: Request, res: Response) => {
+    try {
+      const { email, password, setPassword } = req.body;
+      if (!email) {
+        res.status(400).json({ error: "Thiếu địa chỉ email đăng nhập." });
+        return;
+      }
+      
+      const emailLower = email.toLowerCase().trim();
+      
+      // Load users
+      const users = await db.getUsers();
+      
+      // Check if it's the default admin (ensure seeded if not found)
+      let user = users.find(u => u.email.toLowerCase() === emailLower);
+      if (emailLower === 'hoangnk2712@gmail.com' && !user) {
+        // Fallback in case not seeded yet
+        await db.addUserRole('hoangnk2712@gmail.com', 'admin');
+        await db.setUserPassword('hoangnk2712@gmail.com', 'akiiiii29');
+        user = {
+          email: 'hoangnk2712@gmail.com',
+          role: 'admin',
+          password: 'akiiiii29',
+          createdAt: new Date().toISOString()
+        };
+      }
+      
+      if (!user) {
+        res.status(400).json({ error: "Email này không có quyền truy cập hệ thống." });
+        return;
+      }
+      
+      const hasPassword = !!user.password;
+      
+      // Case A: Client checking status (only sent email)
+      if (password === undefined && setPassword === undefined) {
+        if (!hasPassword) {
+          res.json({ status: "first_time", email: emailLower });
+        } else {
+          res.json({ status: "need_password", email: emailLower });
+        }
+        return;
+      }
+      
+      // Case B: First time login - setting password
+      if (setPassword !== undefined) {
+        if (hasPassword) {
+          res.status(400).json({ error: "Tài khoản này đã được thiết lập mật khẩu từ trước." });
+          return;
+        }
+        if (!setPassword || setPassword.length < 4) {
+          res.status(400).json({ error: "Mật khẩu thiết lập phải từ 4 ký tự trở lên." });
+          return;
+        }
+        
+        await db.setUserPassword(emailLower, setPassword);
+        res.json({ status: "success", email: emailLower, role: user.role });
+        return;
+      }
+      
+      // Case C: Subsequent login - verifying password
+      if (password !== undefined) {
+        if (!hasPassword) {
+          res.status(400).json({ error: "Tài khoản chưa được đặt mật khẩu. Vui lòng thiết lập mật khẩu trước." });
+          return;
+        }
+        
+        if (user.password === password) {
+          res.json({ status: "success", email: emailLower, role: user.role });
+        } else {
+          res.status(400).json({ error: "Mật khẩu không chính xác." });
+        }
+        return;
+      }
+      
+    } catch (e: any) {
+      res.status(500).json({ error: e.message });
+    }
+  });
+
+  // 13. Admin Management - List Users
+  app.get('/api/admin/users', async (req: Request, res: Response) => {
+    try {
+      res.json(await db.getUsers());
+    } catch (e: any) {
+      res.status(500).json({ error: e.message });
+    }
+  });
+
+  // 14. Admin Management - Add/Update User
+  app.post('/api/admin/users', async (req: Request, res: Response) => {
+    try {
+      const { email, role } = req.body;
+      if (!email || !role) {
+        res.status(400).json({ error: "Thiếu email hoặc quyền hạn." });
+        return;
+      }
+      if (role !== 'admin' && role !== 'staff') {
+        res.status(400).json({ error: "Quyền hạn không hợp lệ." });
+        return;
+      }
+      
+      await db.addUserRole(email, role);
+      res.json({ success: true, message: `Cấp quyền ${role === 'admin' ? 'Quản trị' : 'Soát vé'} cho ${email} thành công.` });
+    } catch (e: any) {
+      res.status(500).json({ error: e.message });
+    }
+  });
+
+  // 15. Admin Management - Remove User
+  app.delete('/api/admin/users/:email', async (req: Request, res: Response) => {
+    try {
+      const { email } = req.params;
+      if (!email) {
+        res.status(400).json({ error: "Thiếu địa chỉ email." });
+        return;
+      }
+      
+      if (email.toLowerCase().trim() === 'hoangnk2712@gmail.com') {
+        res.status(400).json({ error: "Không thể xóa tài khoản admin mặc định." });
+        return;
+      }
+      
+      await db.removeUserRole(email);
+      res.json({ success: true, message: `Thu hồi quyền thành công của ${email}.` });
     } catch (e: any) {
       res.status(500).json({ error: e.message });
     }

@@ -68,3 +68,11 @@ export interface SePayTransaction {
   code: string;
   createdAt: string;
 }
+
+export interface UserRoleData {
+  email: string;
+  role: 'admin' | 'staff';
+  password?: string | null;
+  createdAt: string;
+}
+

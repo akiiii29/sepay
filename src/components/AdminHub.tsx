@@ -1,8 +1,9 @@
 import React, { useState } from 'react';
-import { BookingData, TicketData, SePayTransaction } from '../types';
+import { BookingData, TicketData, SePayTransaction, UserRoleData } from '../types';
 import { 
   Users, Ticket, DollarSign, CheckCircle, RefreshCcw, Search, 
-  Filter, Ban, Check, History, LayoutDashboard, Copy, ArrowDownRight, Smartphone, AlertTriangle
+  Filter, Ban, Check, History, LayoutDashboard, Copy, ArrowDownRight, Smartphone, AlertTriangle,
+  ShieldAlert, Trash2, UserPlus
 } from 'lucide-react';
 import { formatVND, formatISOToDateTime, sounds } from '../utils';
 
@@ -24,9 +25,13 @@ interface AdminHubProps {
   onManualCancel: (bookingId: string) => void;
   onResetDb: () => void;
   isLoading: boolean;
+  users: UserRoleData[];
+  onAddUser: (email: string, role: 'admin' | 'staff') => Promise<{ success: boolean; error?: string }>;
+  onRemoveUser: (email: string) => Promise<{ success: boolean; error?: string }>;
+  currentUserEmail?: string;
 }
 
-type AdminTab = 'dashboard' | 'bookings' | 'customers' | 'sepay_logs';
+type AdminTab = 'dashboard' | 'bookings' | 'customers' | 'sepay_logs' | 'users';
 
 export default function AdminHub({
   bookings,
@@ -35,7 +40,11 @@ export default function AdminHub({
   onManualApprove,
   onManualCancel,
   onResetDb,
-  isLoading
+  isLoading,
+  users,
+  onAddUser,
+  onRemoveUser,
+  currentUserEmail
 }: AdminHubProps) {
   const [activeTab, setActiveTab] = useState<AdminTab>('dashboard');
   const [searchTerm, setSearchTerm] = useState('');
@@ -195,6 +204,18 @@ export default function AdminHub({
           >
             <History className="w-4 h-4" />
             Nhật Ký Nhận Tiền SePay Webhook ({transactions.length})
+          </button>
+
+          <button
+            onClick={() => { setActiveTab('users'); setSearchTerm(''); }}
+            className={`flex items-center gap-2 px-5 py-3 rounded-xl text-xs font-bold transition-all whitespace-nowrap ${
+              activeTab === 'users' 
+                ? 'bg-slate-900 text-white shadow-sm' 
+                : 'text-slate-600 hover:bg-slate-100'
+            }`}
+          >
+            <Users className="w-4 h-4" />
+            Quản Lý Quyền Hạn
           </button>
         </div>
 
@@ -669,6 +690,145 @@ export default function AdminHub({
                   )}
                 </tbody>
               </table>
+            </div>
+          </div>
+        )}
+
+        {/* ----------------- TAB 5: USERS & PERMISSIONS ----------------- */}
+        {activeTab === 'users' && (
+          <div className="bg-white rounded-2xl border border-slate-100 shadow-sm p-6 animate-fadeIn space-y-8">
+            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 border-b border-slate-100 pb-4">
+              <div>
+                <h2 className="text-base font-bold text-slate-900">Quản Lý Quyền Hạn Nhân Viên</h2>
+                <p className="text-xs text-slate-500 mt-1">
+                  Cấp quyền truy cập hệ thống Quản Trị hoặc Soát Vé Cổng cho nhân viên bằng Email.
+                </p>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+              {/* Form to add user */}
+              <div className="bg-slate-50 border border-slate-100 rounded-2xl p-5 space-y-4 h-fit">
+                <h3 className="text-xs font-black uppercase text-slate-700 tracking-wider flex items-center gap-2">
+                  <UserPlus className="w-4 h-4 text-indigo-600" />
+                  Cấp Quyền Nhân Viên Mới
+                </h3>
+                
+                <form onSubmit={async (e) => {
+                  e.preventDefault();
+                  const form = e.currentTarget;
+                  const emailInput = form.elements.namedItem('email') as HTMLInputElement;
+                  const roleSelect = form.elements.namedItem('role') as HTMLSelectElement;
+                  const email = emailInput.value;
+                  const role = roleSelect.value as 'admin' | 'staff';
+                  
+                  if (!email.trim()) return;
+                  
+                  const result = await onAddUser(email, role);
+                  if (result.success) {
+                    form.reset();
+                    sounds.playSuccess();
+                    alert("Cấp quyền thành công!");
+                  } else {
+                    sounds.playBeepError();
+                    alert("Lỗi: " + result.error);
+                  }
+                }} className="space-y-4">
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Email Nhân Viên</label>
+                    <input
+                      name="email"
+                      type="email"
+                      required
+                      placeholder="nhanvien@gmail.com..."
+                      className="w-full bg-white border border-slate-200 rounded-xl px-3.5 py-2 text-xs focus:outline-none focus:ring-2 focus:ring-slate-800 text-slate-800"
+                    />
+                  </div>
+                  
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Vai Trò (Quyền Hạn)</label>
+                    <select
+                      name="role"
+                      className="w-full bg-white border border-slate-200 rounded-xl px-3.5 py-2 text-xs focus:outline-none focus:ring-2 focus:ring-slate-800 text-slate-805 text-slate-805"
+                    >
+                      <option value="staff">Nhân viên Soát Vé (Chỉ Soát Vé)</option>
+                      <option value="admin">Quản trị viên (Quản Trị + Soát Vé)</option>
+                    </select>
+                  </div>
+                  
+                  <button
+                    type="submit"
+                    className="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs uppercase py-2.5 rounded-xl transition shadow shadow-indigo-600/10 active:scale-95 animate-pulse"
+                  >
+                    Cấp Quyền Truy Cập
+                  </button>
+                </form>
+              </div>
+
+              {/* Users List Table */}
+              <div className="lg:col-span-2 space-y-4">
+                <h3 className="text-xs font-black uppercase text-slate-500 tracking-wider">
+                  Danh Sách Tài Khoản Được Cấp Quyền ({users.length})
+                </h3>
+                
+                <div className="overflow-x-auto rounded-xl border border-slate-150">
+                  <table className="w-full text-left text-xs border-collapse">
+                    <thead>
+                      <tr className="bg-slate-50 text-slate-500 font-bold uppercase border-b border-slate-100">
+                        <th className="px-4 py-3">Tài Khoản Email</th>
+                        <th className="px-4 py-3 text-center">Vai Trò</th>
+                        <th className="px-4 py-3">Ngày Cấp Quyền</th>
+                        <th className="px-4 py-3 text-center">Thao Tác</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100">
+                      {users.map((u, idx) => (
+                        <tr key={idx} className="hover:bg-slate-50/50 transition">
+                          <td className="px-4 py-3">
+                            <span className="font-bold text-slate-850 block">{u.email}</span>
+                          </td>
+                          <td className="px-4 py-3 text-center">
+                            <span className={`inline-block px-2 py-0.5 rounded text-[10px] font-bold ${
+                              u.role === 'admin' 
+                                ? 'bg-indigo-100 text-indigo-800' 
+                                : 'bg-slate-100 text-slate-700'
+                            }`}>
+                              {u.role === 'admin' ? 'Quản trị viên' : 'Nhân viên Soát vé'}
+                            </span>
+                          </td>
+                          <td className="px-4 py-3 text-slate-400 font-mono text-[10px]">
+                            {formatISOToDateTime(u.createdAt)}
+                          </td>
+                          <td className="px-4 py-3 text-center">
+                            {u.email.toLowerCase().trim() === 'hoangnk2712@gmail.com' ? (
+                              <span className="text-[10px] text-slate-400 italic font-medium">Mặc định (Admin)</span>
+                            ) : u.email.toLowerCase().trim() === currentUserEmail?.toLowerCase().trim() ? (
+                              <span className="text-[10px] text-slate-400 italic font-medium">Tài khoản hiện tại</span>
+                            ) : (
+                              <button
+                                onClick={async () => {
+                                  if (window.confirm(`Bạn có chắc chắn muốn thu hồi quyền truy cập của ${u.email}?`)) {
+                                    const res = await onRemoveUser(u.email);
+                                    if (res.success) {
+                                      alert("Thu hồi quyền thành công!");
+                                    } else {
+                                      alert("Lỗi: " + res.error);
+                                    }
+                                  }
+                                }}
+                                className="p-1 text-rose-600 hover:bg-rose-50 border border-transparent hover:border-rose-100 rounded-lg transition active:scale-95"
+                                title="Thu hồi quyền truy cập"
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
+                              </button>
+                            )}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
             </div>
           </div>
         )}

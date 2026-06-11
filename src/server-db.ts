@@ -1,5 +1,11 @@
 import fs from 'fs';
 import path from 'path';
+import { initializeApp, getApps, cert } from 'firebase-admin/app';
+import { getFirestore, Firestore } from 'firebase-admin/firestore';
+import dotenv from 'dotenv';
+import { sendBookingEmail } from './mail-service';
+
+dotenv.config();
 
 // Define TS Interfaces for durable storage
 export interface EventTicketType {
@@ -66,11 +72,19 @@ export interface SePayTransaction {
   createdAt: string;
 }
 
+export interface UserRoleData {
+  email: string;
+  role: 'admin' | 'staff';
+  password?: string | null;
+  createdAt: string;
+}
+
 interface DatabaseStructure {
   events: EventData[];
   bookings: BookingData[];
   tickets: TicketData[];
   transactions: SePayTransaction[];
+  users: UserRoleData[];
 }
 
 const DB_FILE = path.join(process.cwd(), 'database.json');
@@ -212,12 +226,102 @@ const INITIAL_DB: DatabaseStructure = {
       code: "DH829140",
       createdAt: "2026-06-11T02:35:12Z"
     }
+  ],
+  users: [
+    {
+      email: "hoangnk2712@gmail.com",
+      role: "admin",
+      password: "akiiiii29",
+      createdAt: "2026-06-11T00:00:00Z"
+    }
   ]
 };
 
-// Ensure seed data standard correction
-INITIAL_DB.bookings[1].totalAmount = 2000;
+// Setup Firebase connection if configured
+const useFirebase = !!(process.env.FIREBASE_PROJECT_ID);
+let firestore: Firestore | null = null;
 
+if (useFirebase) {
+  try {
+    const config: any = {};
+    if (process.env.FIREBASE_CLIENT_EMAIL && process.env.FIREBASE_PRIVATE_KEY) {
+      config.credential = cert({
+        projectId: process.env.FIREBASE_PROJECT_ID,
+        clientEmail: process.env.FIREBASE_CLIENT_EMAIL,
+        privateKey: process.env.FIREBASE_PRIVATE_KEY.replace(/\\n/g, '\n'),
+      });
+    } else {
+      config.projectId = process.env.FIREBASE_PROJECT_ID;
+    }
+    
+    if (getApps().length === 0) {
+      initializeApp(config);
+    }
+    firestore = getFirestore();
+    console.log(`[Firebase]: Connection established successfully with Project ID: ${process.env.FIREBASE_PROJECT_ID}`);
+    
+    // Asynchronously seed database if empty
+    seedFirebaseDbIfNeeded();
+  } catch (error) {
+    console.error("[Firebase]: Configuration failed. Falling back to local database.json", error);
+    firestore = null;
+  }
+} else {
+  console.log("[Firebase]: No FIREBASE_PROJECT_ID environment variable. Running in LOCAL database mode.");
+}
+
+async function seedFirebaseDbIfNeeded() {
+  if (!firestore) return;
+  try {
+    const eventsSnapshot = await firestore.collection('events').limit(1).get();
+    if (eventsSnapshot.empty) {
+      console.log("[Firebase]: Database is empty. Seeding events, bookings, tickets, and transactions...");
+      
+      const batch = firestore.batch();
+      
+      for (const event of INITIAL_DB.events) {
+        batch.set(firestore.collection('events').doc(event.id), event);
+      }
+      
+      for (const booking of INITIAL_DB.bookings) {
+        batch.set(firestore.collection('bookings').doc(booking.id), booking);
+      }
+      
+      for (const ticket of INITIAL_DB.tickets) {
+        batch.set(firestore.collection('tickets').doc(ticket.id), ticket);
+      }
+      
+      for (const transaction of INITIAL_DB.transactions) {
+        batch.set(firestore.collection('transactions').doc(transaction.id), transaction);
+      }
+      
+      await batch.commit();
+      console.log("[Firebase]: Data seeding completed successfully.");
+    }
+
+    // Seed default admin
+    const adminDoc = await firestore.collection('users').doc('hoangnk2712@gmail.com').get();
+    if (!adminDoc.exists) {
+      console.log("[Firebase]: Seeding default admin hoangnk2712@gmail.com...");
+      await firestore.collection('users').doc('hoangnk2712@gmail.com').set({
+        email: "hoangnk2712@gmail.com",
+        role: "admin",
+        password: "akiiiii29",
+        createdAt: new Date().toISOString()
+      });
+    } else {
+      // Ensure password is set correctly for admin
+      const data = adminDoc.data() as UserRoleData;
+      if (data.password !== 'akiiiii29') {
+        await firestore.collection('users').doc('hoangnk2712@gmail.com').update({ password: 'akiiiii29' });
+      }
+    }
+  } catch (error) {
+    console.error("[Firebase]: Failed to seed database:", error);
+  }
+}
+
+// Local JSON file database logic
 function readJson(): DatabaseStructure {
   try {
     if (!fs.existsSync(DB_FILE)) {
@@ -228,7 +332,19 @@ function readJson(): DatabaseStructure {
     if (!content.trim()) {
       return INITIAL_DB;
     }
-    return JSON.parse(content);
+    const parsed = JSON.parse(content);
+    if (!parsed.users) {
+      parsed.users = INITIAL_DB.users;
+      fs.writeFileSync(DB_FILE, JSON.stringify(parsed, null, 2), 'utf-8');
+    } else {
+      // Ensure default admin has password set in local file too
+      const idx = parsed.users.findIndex((u: any) => u.email.toLowerCase() === 'hoangnk2712@gmail.com');
+      if (idx !== -1 && parsed.users[idx].password !== 'akiiiii29') {
+        parsed.users[idx].password = 'akiiiii29';
+        fs.writeFileSync(DB_FILE, JSON.stringify(parsed, null, 2), 'utf-8');
+      }
+    }
+    return parsed;
   } catch (error) {
     console.error("Error reading database file, returning mock data:", error);
     return INITIAL_DB;
@@ -245,50 +361,219 @@ function writeJson(data: DatabaseStructure): boolean {
   }
 }
 
+const EXPIRY_TIME = 15 * 60 * 1000; // 15 minutes
+
+async function checkAndExpireBooking(booking: BookingData): Promise<BookingData> {
+  if (booking.status === 'PENDING') {
+    const createdAtTime = new Date(booking.createdAt).getTime();
+    if (Date.now() - createdAtTime > EXPIRY_TIME) {
+      console.log(`[Lazy Expiry]: Booking ${booking.id} has expired. Cancelling dynamically...`);
+      const updated = await db.updateBookingStatus(booking.id, 'CANCELLED');
+      return updated || { ...booking, status: 'CANCELLED' };
+    }
+  }
+  return booking;
+}
+
 export const db = {
-  getEvents: (): EventData[] => {
+  getEvents: async (): Promise<EventData[]> => {
+    if (firestore) {
+      const snapshot = await firestore.collection('events').get();
+      return snapshot.docs.map(doc => doc.data() as EventData);
+    }
     return readJson().events;
   },
 
-  getEventById: (id: string): EventData | undefined => {
+  getEventById: async (id: string): Promise<EventData | undefined> => {
+    if (firestore) {
+      const doc = await firestore.collection('events').doc(id).get();
+      return doc.exists ? (doc.data() as EventData) : undefined;
+    }
     return readJson().events.find(e => e.id === id);
   },
 
-  saveEvents: (events: EventData[]): boolean => {
+  saveEvents: async (events: EventData[]): Promise<boolean> => {
+    if (firestore) {
+      const batch = firestore.batch();
+      for (const event of events) {
+        batch.set(firestore.collection('events').doc(event.id), event);
+      }
+      await batch.commit();
+      return true;
+    }
     const data = readJson();
     data.events = events;
     return writeJson(data);
   },
 
-  getBookings: (): BookingData[] => {
-    return readJson().bookings;
-  },
-
-  getBookingById: (id: string): BookingData | undefined => {
-    return readJson().bookings.find(b => b.id === id);
-  },
-
-  addBooking: (booking: BookingData): boolean => {
-    const data = readJson();
+  getBookings: async (): Promise<BookingData[]> => {
+    if (firestore) {
+      const snapshot = await firestore.collection('bookings').get();
+      const bookings = snapshot.docs.map(doc => doc.data() as BookingData);
+      
+      const checkedBookings: BookingData[] = [];
+      for (const booking of bookings) {
+        checkedBookings.push(await checkAndExpireBooking(booking));
+      }
+      return checkedBookings;
+    }
     
+    const data = readJson();
+    const checkedBookings: BookingData[] = [];
+    for (const booking of data.bookings) {
+      checkedBookings.push(await checkAndExpireBooking(booking));
+    }
+    return checkedBookings;
+  },
+
+  getBookingById: async (id: string): Promise<BookingData | undefined> => {
+    if (firestore) {
+      const doc = await firestore.collection('bookings').doc(id).get();
+      if (!doc.exists) return undefined;
+      const booking = doc.data() as BookingData;
+      return await checkAndExpireBooking(booking);
+    }
+    
+    const data = readJson();
+    const booking = data.bookings.find(b => b.id === id);
+    if (!booking) return undefined;
+    return await checkAndExpireBooking(booking);
+  },
+
+  addBooking: async (booking: BookingData): Promise<boolean> => {
+    if (firestore) {
+      // Check ticket limit
+      const eventDoc = await firestore.collection('events').doc(booking.eventId).get();
+      if (eventDoc.exists) {
+        const event = eventDoc.data() as EventData;
+        const ticketTypeObj = event.ticketTypes.find(t => t.id === booking.ticketType || t.name === booking.ticketType);
+        if (ticketTypeObj) {
+          if (ticketTypeObj.soldCount + booking.quantity > ticketTypeObj.totalLimit) {
+            console.warn("Ticket limit exceeded for type", booking.ticketType);
+          }
+        }
+      }
+      await firestore.collection('bookings').doc(booking.id).set(booking);
+      return true;
+    }
+    
+    const data = readJson();
     // Check ticket limit
     const event = data.events.find(e => e.id === booking.eventId);
     if (event) {
       const ticketTypeObj = event.ticketTypes.find(t => t.id === booking.ticketType || t.name === booking.ticketType);
       if (ticketTypeObj) {
         if (ticketTypeObj.soldCount + booking.quantity > ticketTypeObj.totalLimit) {
-          // exceeded
           console.warn("Ticket limit exceeded for type", booking.ticketType);
-          // Auto block or let it pass for sandbox demos, but best to log
         }
       }
     }
-
     data.bookings.push(booking);
     return writeJson(data);
   },
 
-  updateBookingStatus: (id: string, status: 'PAID' | 'CANCELLED' | 'PENDING', paymentDetails?: any): BookingData | null => {
+  updateBookingStatus: async (
+    id: string, 
+    status: 'PAID' | 'CANCELLED' | 'PENDING', 
+    paymentDetails?: any
+  ): Promise<BookingData | null> => {
+    if (firestore) {
+      const bookingRef = firestore.collection('bookings').doc(id);
+      
+      const result = await firestore.runTransaction(async (transaction) => {
+        const bookingDoc = await transaction.get(bookingRef);
+        if (!bookingDoc.exists) return null;
+        
+        const booking = bookingDoc.data() as BookingData;
+        const prevStatus = booking.status;
+        
+        const updatedBooking: BookingData = {
+          ...booking,
+          status,
+          paidAt: status === 'PAID' ? new Date().toISOString() : booking.paidAt,
+          paymentDetails: paymentDetails || booking.paymentDetails || null
+        };
+        
+        transaction.set(bookingRef, updatedBooking);
+        
+        if (status === 'PAID' && prevStatus !== 'PAID') {
+          // Increase event counter
+          const eventRef = firestore.collection('events').doc(booking.eventId);
+          const eventDoc = await transaction.get(eventRef);
+          if (eventDoc.exists) {
+            const event = eventDoc.data() as EventData;
+            const tTypeIdx = event.ticketTypes.findIndex(
+              t => t.id === booking.ticketType || t.name === booking.ticketType
+            );
+            if (tTypeIdx !== -1) {
+              event.ticketTypes[tTypeIdx].soldCount += booking.quantity;
+              transaction.set(eventRef, event);
+            }
+          }
+          
+          // Generate tickets inside transactions
+          for (let i = 1; i <= booking.quantity; i++) {
+            const suffix = i < 10 ? `0${i}` : `${i}`;
+            const ticketId = `TK-${booking.id.replace('BK-', '')}-${suffix}`;
+            const ticketRef = firestore.collection('tickets').doc(ticketId);
+            
+            const newTicket: TicketData = {
+              id: ticketId,
+              bookingId: booking.id,
+              eventId: booking.eventId,
+              eventTitle: booking.eventTitle,
+              customerName: booking.customerName,
+              customerEmail: booking.customerEmail,
+              ticketType: booking.ticketType,
+              checkedIn: false,
+              checkedInAt: null,
+              gateChecked: null
+            };
+            transaction.set(ticketRef, newTicket);
+          }
+        } else if (status === 'CANCELLED' && prevStatus === 'PAID') {
+          // Revert event counter
+          const eventRef = firestore.collection('events').doc(booking.eventId);
+          const eventDoc = await transaction.get(eventRef);
+          if (eventDoc.exists) {
+            const event = eventDoc.data() as EventData;
+            const tTypeIdx = event.ticketTypes.findIndex(
+              t => t.id === booking.ticketType || t.name === booking.ticketType
+            );
+            if (tTypeIdx !== -1) {
+              event.ticketTypes[tTypeIdx].soldCount = Math.max(
+                0,
+                event.ticketTypes[tTypeIdx].soldCount - booking.quantity
+              );
+              transaction.set(eventRef, event);
+            }
+          }
+        }
+        
+        return updatedBooking;
+      });
+      
+      if (status === 'CANCELLED' && result) {
+        // Clean up tickets
+        const ticketsSnapshot = await firestore.collection('tickets').where('bookingId', '==', id).get();
+        const batch = firestore.batch();
+        ticketsSnapshot.docs.forEach(doc => {
+          batch.delete(doc.ref);
+        });
+        await batch.commit();
+      }
+
+      if (status === 'PAID' && result) {
+        // Get tickets and send confirmation email
+        const ticketsSnapshot = await firestore.collection('tickets').where('bookingId', '==', id).get();
+        const tickets = ticketsSnapshot.docs.map(doc => doc.data() as TicketData);
+        await sendBookingEmail(result, tickets);
+      }
+      
+      return result;
+    }
+    
+    // Local DB Fallback
     const data = readJson();
     const index = data.bookings.findIndex(b => b.id === id);
     if (index === -1) return null;
@@ -301,11 +586,9 @@ export const db = {
       if (paymentDetails) {
         data.bookings[index].paymentDetails = paymentDetails;
       }
-
-      // If transition from not paid to paid: update event sold count, and emit virtual tickets
+      
       if (prevStatus !== 'PAID') {
         const booking = data.bookings[index];
-        // Increase event counter
         const eventIndex = data.events.findIndex(e => e.id === booking.eventId);
         if (eventIndex !== -1) {
           const tTypeIdx = data.events[eventIndex].ticketTypes.findIndex(
@@ -315,15 +598,14 @@ export const db = {
             data.events[eventIndex].ticketTypes[tTypeIdx].soldCount += booking.quantity;
           }
         }
-
-        // Generate tickets
+        
+        const generatedTickets: TicketData[] = [];
         for (let i = 1; i <= booking.quantity; i++) {
           const suffix = i < 10 ? `0${i}` : `${i}`;
           const ticketId = `TK-${booking.id.replace('BK-', '')}-${suffix}`;
           
-          // Prevent duplicates
           if (!data.tickets.some(t => t.id === ticketId)) {
-            data.tickets.push({
+            const tk: TicketData = {
               id: ticketId,
               bookingId: booking.id,
               eventId: booking.eventId,
@@ -334,12 +616,17 @@ export const db = {
               checkedIn: false,
               checkedInAt: null,
               gateChecked: null
-            });
+            };
+            data.tickets.push(tk);
+            generatedTickets.push(tk);
           }
         }
+        writeJson(data);
+        
+        // Send email
+        await sendBookingEmail(data.bookings[index], generatedTickets);
       }
     } else if (status === 'CANCELLED' && prevStatus === 'PAID') {
-      // Revert event counter
       const booking = data.bookings[index];
       const eventIndex = data.events.findIndex(e => e.id === booking.eventId);
       if (eventIndex !== -1) {
@@ -353,23 +640,66 @@ export const db = {
           );
         }
       }
-      // Remove or disable tickets
       data.tickets = data.tickets.filter(t => t.bookingId !== id);
+      writeJson(data);
+    } else {
+      writeJson(data);
     }
-
-    writeJson(data);
+    
     return data.bookings[index];
   },
 
-  getTickets: (): TicketData[] => {
+  getTickets: async (): Promise<TicketData[]> => {
+    if (firestore) {
+      const snapshot = await firestore.collection('tickets').get();
+      return snapshot.docs.map(doc => doc.data() as TicketData);
+    }
     return readJson().tickets;
   },
 
-  getTicketById: (id: string): TicketData | undefined => {
+  getTicketById: async (id: string): Promise<TicketData | undefined> => {
+    if (firestore) {
+      const doc = await firestore.collection('tickets').doc(id).get();
+      return doc.exists ? (doc.data() as TicketData) : undefined;
+    }
     return readJson().tickets.find(t => t.id === id);
   },
 
-  checkInTicket: (id: string, gate: string): { success: boolean; message: string; ticket?: TicketData } => {
+  checkInTicket: async (id: string, gate: string): Promise<{ success: boolean; message: string; ticket?: TicketData }> => {
+    if (firestore) {
+      const ticketRef = firestore.collection('tickets').doc(id);
+      
+      return await firestore.runTransaction(async (transaction) => {
+        const ticketDoc = await transaction.get(ticketRef);
+        if (!ticketDoc.exists) {
+          return { success: false, message: `Mã vé "${id}" không hợp lệ hoặc không tồn tại!` };
+        }
+        
+        const ticket = ticketDoc.data() as TicketData;
+        if (ticket.checkedIn) {
+          return {
+            success: false,
+            message: `Vé này đã được soát lúc ${ticket.checkedInAt ? new Date(ticket.checkedInAt).toLocaleTimeString('vi-VN') : 'không rõ'} tại ${ticket.gateChecked || 'Không rõ'}!`,
+            ticket
+          };
+        }
+        
+        const updatedTicket: TicketData = {
+          ...ticket,
+          checkedIn: true,
+          checkedInAt: new Date().toISOString(),
+          gateChecked: gate || "Cổng Chính"
+        };
+        
+        transaction.set(ticketRef, updatedTicket);
+        return {
+          success: true,
+          message: `Soát vé thành công cho: ${ticket.customerName} (${ticket.ticketType.toUpperCase()})`,
+          ticket: updatedTicket
+        };
+      });
+    }
+    
     const data = readJson();
     const index = data.tickets.findIndex(t => t.id.toLowerCase() === id.toLowerCase());
     if (index === -1) {
@@ -385,7 +715,6 @@ export const db = {
       };
     }
 
-    // Mark as checkedIn
     data.tickets[index].checkedIn = true;
     data.tickets[index].checkedInAt = new Date().toISOString();
     data.tickets[index].gateChecked = gate || "Cổng Chính";
@@ -399,18 +728,154 @@ export const db = {
     };
   },
 
-  getTransactions: (): SePayTransaction[] => {
+  getEventsStatus: async (): Promise<any> => {
+    // Helper to bypass compilation if used in chart widgets
+    return [];
+  },
+
+  getTransactions: async (): Promise<SePayTransaction[]> => {
+    if (firestore) {
+      const snapshot = await firestore.collection('transactions').get();
+      const txs = snapshot.docs.map(doc => doc.data() as SePayTransaction);
+      return txs.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+    }
     return readJson().transactions;
   },
 
-  addTransaction: (tx: SePayTransaction): boolean => {
+  addTransaction: async (tx: SePayTransaction): Promise<boolean> => {
+    if (firestore) {
+      await firestore.collection('transactions').doc(tx.id).set(tx);
+      return true;
+    }
     const data = readJson();
-    data.transactions.unshift(tx); // Newest transaction first
+    data.transactions.unshift(tx);
     return writeJson(data);
   },
 
-  // Reset database for demonstration reset action
-  resetDb: (): boolean => {
-    return writeJson(INITIAL_DB);
+  getUsers: async (): Promise<UserRoleData[]> => {
+    if (firestore) {
+      const snapshot = await firestore.collection('users').get();
+      return snapshot.docs.map(doc => doc.data() as UserRoleData);
+    }
+    const data = readJson();
+    if (!data.users) data.users = [];
+    return data.users;
+  },
+
+  addUserRole: async (email: string, role: 'admin' | 'staff'): Promise<boolean> => {
+    const emailLower = email.toLowerCase().trim();
+    if (firestore) {
+      await firestore.collection('users').doc(emailLower).set({
+        email: emailLower,
+        role,
+        password: null, // password will be set on first login
+        createdAt: new Date().toISOString()
+      });
+      return true;
+    }
+    const data = readJson();
+    if (!data.users) data.users = [];
+    
+    const index = data.users.findIndex(u => u.email.toLowerCase() === emailLower);
+    if (index !== -1) {
+      data.users[index].role = role;
+    } else {
+      data.users.push({
+        email: emailLower,
+        role,
+        password: null,
+        createdAt: new Date().toISOString()
+      });
+    }
+    return writeJson(data);
+  },
+
+  removeUserRole: async (email: string): Promise<boolean> => {
+    const emailLower = email.toLowerCase().trim();
+    if (firestore) {
+      await firestore.collection('users').doc(emailLower).delete();
+      return true;
+    }
+    const data = readJson();
+    if (!data.users) data.users = [];
+    data.users = data.users.filter(u => u.email.toLowerCase() !== emailLower);
+    return writeJson(data);
+  },
+
+  setUserPassword: async (email: string, password: string): Promise<boolean> => {
+    const emailLower = email.toLowerCase().trim();
+    if (firestore) {
+      await firestore.collection('users').doc(emailLower).update({ password });
+      return true;
+    }
+    const data = readJson();
+    if (!data.users) data.users = [];
+    const index = data.users.findIndex(u => u.email.toLowerCase() === emailLower);
+    if (index !== -1) {
+      data.users[index].password = password;
+      return writeJson(data);
+    }
+    return false;
+  },
+
+  resetDb: async (): Promise<boolean> => {
+    if (firestore) {
+      console.log("[Firebase]: Resetting Firestore to initial DB state...");
+      const batch = firestore.batch();
+      
+      const bookings = await firestore.collection('bookings').get();
+      bookings.docs.forEach(doc => batch.delete(doc.ref));
+      
+      const tickets = await firestore.collection('tickets').get();
+      tickets.docs.forEach(doc => batch.delete(doc.ref));
+      
+      const txs = await firestore.collection('transactions').get();
+      txs.docs.forEach(doc => batch.delete(doc.ref));
+      
+      const events = await firestore.collection('events').get();
+      events.docs.forEach(doc => batch.delete(doc.ref));
+      
+      const users = await firestore.collection('users').get();
+      users.docs.forEach(doc => batch.delete(doc.ref));
+      
+      await batch.commit();
+      
+      for (const event of INITIAL_DB.events) {
+        const eventCopy = JSON.parse(JSON.stringify(event));
+        eventCopy.ticketTypes.forEach((t: any) => t.soldCount = 0);
+        await firestore.collection('events').doc(event.id).set(eventCopy);
+      }
+      
+      for (const booking of INITIAL_DB.bookings) {
+        await firestore.collection('bookings').doc(booking.id).set(booking);
+      }
+      for (const ticket of INITIAL_DB.tickets) {
+        await firestore.collection('tickets').doc(ticket.id).set(ticket);
+      }
+      for (const tx of INITIAL_DB.transactions) {
+        await firestore.collection('transactions').doc(tx.id).set(tx);
+      }
+      // Re-seed default admin user with default password
+      await firestore.collection('users').doc('hoangnk2712@gmail.com').set({
+        email: "hoangnk2712@gmail.com",
+        role: "admin",
+        password: "akiiiii29",
+        createdAt: new Date().toISOString()
+      });
+      
+      console.log("[Firebase]: Firestore database reset completed.");
+      return true;
+    }
+    
+    const resetData = JSON.parse(JSON.stringify(INITIAL_DB));
+    resetData.users = [
+      {
+        email: "hoangnk2712@gmail.com",
+        role: "admin",
+        password: "akiiiii29",
+        createdAt: new Date().toISOString()
+      }
+    ];
+    return writeJson(resetData);
   }
 };

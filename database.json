@@ -224,9 +224,9 @@
       "customerName": "Nguyen Khanh Hoang",
       "customerEmail": "hoangnk2712@gmail.com",
       "ticketType": "Hạng Vé Thường (GA)",
-      "checkedIn": false,
-      "checkedInAt": null,
-      "gateChecked": null
+      "checkedIn": true,
+      "checkedInAt": "2026-06-11T14:42:01.223Z",
+      "gateChecked": "Cổng Chính"
     },
     {
       "id": "TK-106288-01",

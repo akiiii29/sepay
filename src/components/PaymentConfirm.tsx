@@ -15,9 +15,9 @@ interface PaymentConfirmProps {
 export default function PaymentConfirm({ booking, onPaymentSuccess, isPolling: initialIsPolling }: PaymentConfirmProps) {
   const [copiedField, setCopiedField] = useState<'account' | 'content' | 'amount' | null>(null);
   
-  // Timer State (10 minutes)
-  const [timeLeft, setTimeLeft] = useState(600);
-  const [localStatus, setLocalStatus] = useState<'PENDING' | 'PAID'>(booking.status);
+  // Timer State (15 minutes)
+  const [timeLeft, setTimeLeft] = useState(900);
+  const [localStatus, setLocalStatus] = useState<'PENDING' | 'PAID' | 'CANCELLED'>(booking.status);
   
   // Sandbox Simulator states
   const [isSimulating, setIsSimulating] = useState(false);
@@ -32,18 +32,24 @@ export default function PaymentConfirm({ booking, onPaymentSuccess, isPolling: i
 
   // 2. Poll Booking Status from backend every 2s
   useEffect(() => {
-    if (localStatus === 'PAID') return;
+    if (localStatus === 'PAID' || localStatus === 'CANCELLED') return;
 
     const interval = setInterval(async () => {
       try {
         const res = await fetch(`/api/booking/${booking.id}`);
         if (res.ok) {
           const data = await res.json();
-          if (data.booking && data.booking.status === 'PAID') {
-            setLocalStatus('PAID');
-            clearInterval(interval);
-            sounds.playSuccess(); // play nice victory sound
-            onPaymentSuccess();
+          if (data.booking) {
+            if (data.booking.status === 'PAID') {
+              setLocalStatus('PAID');
+              clearInterval(interval);
+              sounds.playSuccess(); // play nice victory sound
+              onPaymentSuccess();
+            } else if (data.booking.status === 'CANCELLED') {
+              setLocalStatus('CANCELLED');
+              clearInterval(interval);
+              sounds.playBeepError(); // play error beep
+            }
           }
         }
       } catch (e) {
@@ -52,14 +58,20 @@ export default function PaymentConfirm({ booking, onPaymentSuccess, isPolling: i
     }, 2000);
 
     return () => clearInterval(interval);
-  }, [booking.id, localStatus]);
+  }, [booking.id, localStatus, onPaymentSuccess]);
 
   // 3. Countdown timer implementation
   useEffect(() => {
-    if (timeLeft <= 0) return;
+    if (timeLeft <= 0) {
+      if (localStatus === 'PENDING') {
+        setLocalStatus('CANCELLED');
+        sounds.playBeepError();
+      }
+      return;
+    }
     const timer = setTimeout(() => setTimeLeft(timeLeft - 1), 1000);
     return () => clearTimeout(timer);
-  }, [timeLeft]);
+  }, [timeLeft, localStatus]);
 
   const formatTime = (seconds: number) => {
     const min = Math.floor(seconds / 60);
@@ -108,6 +120,28 @@ export default function PaymentConfirm({ booking, onPaymentSuccess, isPolling: i
       setIsSimulating(false);
     }
   };
+
+  if (localStatus === 'CANCELLED') {
+    return (
+      <div className="max-w-md mx-auto bg-white border border-red-100 rounded-3xl p-8 shadow-xl text-center space-y-6 animate-fadeIn my-10">
+        <div className="inline-block bg-red-50 text-red-650 p-4 rounded-full border border-red-100">
+          <AlertCircle className="w-12 h-12 text-red-600" />
+        </div>
+        <div className="space-y-2">
+          <h2 className="text-xl font-black text-slate-900 uppercase tracking-tight">Đơn Đặt Vé Đã Bị Hủy Bỏ</h2>
+          <p className="text-xs text-slate-500 leading-relaxed">
+            Đơn đặt vé <b>#{booking.id}</b> của bạn đã quá hạn thanh toán (15 phút). Để tránh giữ vé ảo, hệ thống đã tự động hủy đơn đặt vé này và giải phóng vé trống cho khách hàng khác.
+          </p>
+        </div>
+        <button
+          onClick={() => window.location.reload()}
+          className="w-full bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs uppercase tracking-wider py-3.5 px-6 rounded-2xl transition active:scale-95 shadow-lg"
+        >
+          Quay Lại Trang Chủ Đặt Vé Mới
+        </button>
+      </div>
+    );
+  }
 
   return (
     <div className="max-w-4xl mx-auto space-y-8 animate-fadeIn pb-16">
