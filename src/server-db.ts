@@ -513,7 +513,7 @@ export const db = {
       if (!id || String(id).trim() === "") return null;
       const bookingRef = getDocRef('bookings', id);
       
-      const result = await firestore.runTransaction(async (transaction) => {
+      const txResult = await firestore.runTransaction(async (transaction) => {
         const bookingDoc = await transaction.get(bookingRef);
         if (!bookingDoc.exists) return null;
         
@@ -529,6 +529,7 @@ export const db = {
         
         transaction.set(bookingRef, updatedBooking);
         
+        const generatedTickets: TicketData[] = [];
         if (status === 'PAID' && prevStatus !== 'PAID') {
           // Increase event counter
           if (booking.eventId && String(booking.eventId).trim() !== "") {
@@ -569,6 +570,7 @@ export const db = {
               gateChecked: null
             };
             transaction.set(ticketRef, newTicket);
+            generatedTickets.push(newTicket);
           }
         } else if (status === 'CANCELLED' && prevStatus === 'PAID') {
           // Revert event counter
@@ -595,10 +597,12 @@ export const db = {
           }
         }
         
-        return updatedBooking;
+        return { updatedBooking, generatedTickets };
       });
       
-      if (status === 'CANCELLED' && result) {
+      if (!txResult) return null;
+
+      if (status === 'CANCELLED') {
         // Clean up tickets
         const ticketsSnapshot = await firestore.collection('tickets').where('bookingId', '==', String(id)).get();
         const batch = firestore.batch();
@@ -608,14 +612,12 @@ export const db = {
         await batch.commit();
       }
 
-      if (status === 'PAID' && result) {
-        // Get tickets and send confirmation email
-        const ticketsSnapshot = await firestore.collection('tickets').where('bookingId', '==', String(id)).get();
-        const tickets = ticketsSnapshot.docs.map(doc => doc.data() as TicketData);
-        await sendBookingEmail(result, tickets);
+      if (status === 'PAID') {
+        // Send confirmation email with generated tickets from memory directly
+        await sendBookingEmail(txResult.updatedBooking, txResult.generatedTickets);
       }
       
-      return result;
+      return txResult.updatedBooking;
     }
     
     // Local DB Fallback

@@ -159,10 +159,9 @@ async function startServer() {
       
       // Look up all bookings
       const bookings = await db.getBookings();
-      const pendingBookings = bookings.filter(b => b.status === "PENDING");
       
-      // Find matching paymentCode, e.g., DH123456
-      let matchedBooking = pendingBookings.find(b => description.includes(b.paymentCode.toUpperCase()));
+      // Find matching paymentCode (both PENDING and CANCELLED bookings), e.g., DH123456
+      let matchedBooking = bookings.find(b => description.includes(b.paymentCode.toUpperCase()));
       
       // Save Transaction Log
       const sepayTx: SePayTransaction = {
@@ -184,7 +183,18 @@ async function startServer() {
         console.warn(`[SePay Webhook Warning]: Code mismatched for content "${content}" and amount ${transferAmount}`);
         res.json({
           status: "mismatch",
-          message: "Transaction logged but no corresponding pending booking found matching code."
+          message: "Transaction logged but no corresponding booking found matching code."
+        });
+        return;
+      }
+
+      // If already PAID, reply success directly
+      if (matchedBooking.status === "PAID") {
+        console.log(`[SePay Webhook Info]: Booking ${matchedBooking.id} is already PAID. Skipping.`);
+        res.json({
+          status: "success",
+          message: `Booking ${matchedBooking.id} is already PAID.`,
+          booking: matchedBooking
         });
         return;
       }
@@ -264,7 +274,7 @@ async function startServer() {
       
       // Look up bookings
       const bookings = await db.getBookings();
-      const booking = bookings.find(b => b.paymentCode.toUpperCase() === paymentCode.toUpperCase() && b.status === 'PENDING');
+      const booking = bookings.find(b => b.paymentCode.toUpperCase() === paymentCode.toUpperCase());
       
       // Save Transaction
       const sepayTx: SePayTransaction = {
@@ -284,7 +294,16 @@ async function startServer() {
       if (!booking) {
         res.json({
           success: false,
-          message: "Giả lập: Ghi nhận giao dịch chuyển tiền khác, nhưng không có đơn hàng CHƯA THANH TOÁN nào trùng với mã này."
+          message: "Giả lập: Ghi nhận giao dịch chuyển tiền khác, nhưng không có đơn hàng nào trùng với mã này."
+        });
+        return;
+      }
+
+      if (booking.status === 'PAID') {
+        res.json({
+          success: true,
+          message: `Mô phỏng: Đơn đặt vé ${booking.id} đã ở trạng thái PAID trước đó.`,
+          bookingId: booking.id
         });
         return;
       }
