@@ -1,0 +1,282 @@
+{
+  "events": [
+    {
+      "id": "ev-01",
+      "title": "Đại Nhạc Hội 'Sóng Trẻ' 2026",
+      "date": "12-10-2026",
+      "startTime": "19:00",
+      "location": "Sân vận động Mỹ Đình, Hà Nội",
+      "description": "Đêm nhạc hội bùng nổ của giới trẻ Việt Nam với sự góp mặt của các ca sĩ, rapper hàng đầu. Hệ thống âm thanh, ánh sáng hiện đại đạt chuẩn quốc tế, mang lại trải nghiệm cảm xúc cực đỉnh cùng hàng vạn khán giả.",
+      "bannerGradient": "linear-gradient(135deg, #1d4ed8 0%, #701a75 50%, #b91c1c 100%)",
+      "ticketTypes": [
+        {
+          "id": "standard",
+          "name": "Hạng Vé Thường (GA)",
+          "price": 2000,
+          "totalLimit": 500,
+          "soldCount": 86,
+          "description": "Khu vực đứng gần sân khấu vừa phải, bầu không khí sôi động, trải nghiệm đắm chìm."
+        },
+        {
+          "id": "vip",
+          "name": "Hạng Vé VIP (Fanzone)",
+          "price": 2000,
+          "totalLimit": 120,
+          "soldCount": 36,
+          "description": "Khu vực fanzone sát rạt sân khấu, tặng kèm 1 đồ uống, 1 vòng tay phát sáng và quà lưu niệm."
+        }
+      ]
+    },
+    {
+      "id": "ev-02",
+      "title": "Hội Thảo AI & Công Nghệ FutureTech 2026",
+      "date": "20-11-2026",
+      "startTime": "08:30",
+      "location": "Trung tâm Hội nghị Quốc gia, Hà Nội",
+      "description": "Diễn đàn hàng đầu về Trí tuệ nhân tạo (AI), Web3 và xu hướng công nghệ tương lai tại Việt Nam. Quy tụ hơn 15 chuyên gia xuất sắc toàn cầu đến từ các tập đoàn Big Tech, mang lại góc nhìn chiến lược thực tế nhất.",
+      "bannerGradient": "linear-gradient(135deg, #0f172a 0%, #0369a1 100%)",
+      "ticketTypes": [
+        {
+          "id": "standard",
+          "name": "Vé Tiêu Chuẩn (Standard Pass)",
+          "price": 2000,
+          "totalLimit": 300,
+          "soldCount": 42,
+          "description": "Toàn quyền tham dự các phiên trình bày chính của hội thảo, tài liệu PDF sau sự kiện."
+        },
+        {
+          "id": "premium",
+          "name": "Vé Cao Cấp (Premium VIP Pass)",
+          "price": 2000,
+          "totalLimit": 80,
+          "soldCount": 15,
+          "description": "Ngồi dãy ghế đầu VIP, dùng bữa trưa buffet sang trọng, tham gia tiệc Tea-break networking riêng với chuyên gia."
+        }
+      ]
+    }
+  ],
+  "bookings": [
+    {
+      "id": "BK-82914",
+      "eventId": "ev-01",
+      "eventTitle": "Đại Nhạc Hội 'Sóng Trẻ' 2026",
+      "customerName": "Nguyễn Minh Khang",
+      "customerEmail": "minhkhang.ng@gmail.com",
+      "customerPhone": "0912345678",
+      "ticketType": "VIP",
+      "pricePerTicket": 750000,
+      "quantity": 2,
+      "totalAmount": 1500000,
+      "paymentCode": "DH829140",
+      "status": "PAID",
+      "createdAt": "2026-06-11T02:30:00Z",
+      "paidAt": "2026-06-11T02:35:12Z",
+      "paymentDetails": {
+        "gateway": "Vietcombank",
+        "referenceCode": "VCB23849182390",
+        "transferType": "in",
+        "transferAmount": 1500000
+      }
+    },
+    {
+      "id": "BK-19342",
+      "eventId": "ev-02",
+      "eventTitle": "Hội Thảo AI & Công Nghệ FutureTech 2026",
+      "customerName": "Trần Thị Thu Hương",
+      "customerEmail": "thuhuong_dev@hotmail.com",
+      "customerPhone": "0987654321",
+      "ticketType": "standard",
+      "pricePerTicket": 150000,
+      "quantity": 1,
+      "totalAmount": 150000,
+      "status": "PENDING",
+      "createdAt": "2026-06-11T09:10:00Z",
+      "paidAt": null,
+      "paymentCode": "DH193420"
+    },
+    {
+      "id": "BK-66551",
+      "eventId": "ev-01",
+      "eventTitle": "Đại Nhạc Hội 'Sóng Trẻ' 2026",
+      "customerName": "Nguyen Khanh Hoang",
+      "customerEmail": "hoangnk2712@gmail.com",
+      "customerPhone": "0335893353",
+      "ticketType": "Hạng Vé Thường (GA)",
+      "pricePerTicket": 250000,
+      "quantity": 1,
+      "totalAmount": 250000,
+      "paymentCode": "DH665510",
+      "status": "PAID",
+      "createdAt": "2026-06-11T09:33:45.357Z",
+      "paidAt": "2026-06-11T09:34:07.550Z",
+      "paymentDetails": {
+        "sepayTransactionId": "6451768",
+        "gateway": "MB Bank",
+        "referenceCode": "REF38878857",
+        "transferAmount": 250000,
+        "transactionDate": "2026-06-11 09:34:07",
+        "simulated": true
+      }
+    },
+    {
+      "id": "BK-790014",
+      "eventId": "ev-01",
+      "eventTitle": "Đại Nhạc Hội 'Sóng Trẻ' 2026",
+      "customerName": "nguyen khanh hoang",
+      "customerEmail": "hoangnk27122@gmail.com",
+      "customerPhone": "0335893353",
+      "ticketType": "Hạng Vé Thường (GA)",
+      "pricePerTicket": 250000,
+      "quantity": 1,
+      "totalAmount": 250000,
+      "paymentCode": "DH790014",
+      "status": "PENDING",
+      "createdAt": "2026-06-11T09:51:22.523Z",
+      "paidAt": null
+    },
+    {
+      "id": "BK-644951",
+      "eventId": "ev-01",
+      "eventTitle": "Đại Nhạc Hội 'Sóng Trẻ' 2026",
+      "customerName": "Nguyen Khanh Hoang",
+      "customerEmail": "hoangnk2712@gmail.com",
+      "customerPhone": "21312313",
+      "ticketType": "Hạng Vé Thường (GA)",
+      "pricePerTicket": 2000,
+      "quantity": 1,
+      "totalAmount": 2000,
+      "paymentCode": "DH644951",
+      "status": "PENDING",
+      "createdAt": "2026-06-11T10:06:45.832Z",
+      "paidAt": null
+    },
+    {
+      "id": "BK-178941",
+      "eventId": "ev-01",
+      "eventTitle": "Đại Nhạc Hội 'Sóng Trẻ' 2026",
+      "customerName": "Nguyen Khanh Hoang",
+      "customerEmail": "hoangnk2712@gmail.com",
+      "customerPhone": "123123133",
+      "ticketType": "Hạng Vé Thường (GA)",
+      "pricePerTicket": 2000,
+      "quantity": 1,
+      "totalAmount": 2000,
+      "paymentCode": "DH178941",
+      "status": "PENDING",
+      "createdAt": "2026-06-11T10:06:58.543Z",
+      "paidAt": null
+    },
+    {
+      "id": "BK-106288",
+      "eventId": "ev-01",
+      "eventTitle": "Đại Nhạc Hội 'Sóng Trẻ' 2026",
+      "customerName": "Nguyen Khanh Hoang",
+      "customerEmail": "hoangnk2712@gmail.com",
+      "customerPhone": "123123123",
+      "ticketType": "Hạng Vé Thường (GA)",
+      "pricePerTicket": 2000,
+      "quantity": 1,
+      "totalAmount": 2000,
+      "paymentCode": "DH106288",
+      "status": "PAID",
+      "createdAt": "2026-06-11T10:10:09.525Z",
+      "paidAt": "2026-06-11T10:10:36.786Z",
+      "paymentDetails": {
+        "sepayTransactionId": "3540613",
+        "gateway": "MB Bank",
+        "referenceCode": "REF76272357",
+        "transferAmount": 2000,
+        "transactionDate": "2026-06-11 10:10:36",
+        "simulated": true
+      }
+    }
+  ],
+  "tickets": [
+    {
+      "id": "TK-82914-01",
+      "bookingId": "BK-82914",
+      "eventId": "ev-01",
+      "eventTitle": "Đại Nhạc Hội 'Sóng Trẻ' 2026",
+      "customerName": "Nguyễn Minh Khang",
+      "customerEmail": "minhkhang.ng@gmail.com",
+      "ticketType": "VIP",
+      "checkedIn": false,
+      "checkedInAt": null,
+      "gateChecked": null
+    },
+    {
+      "id": "TK-82914-02",
+      "bookingId": "BK-82914",
+      "eventId": "ev-01",
+      "eventTitle": "Đại Nhạc Hội 'Sóng Trẻ' 2026",
+      "customerName": "Nguyễn Minh Khang",
+      "customerEmail": "minhkhang.ng@gmail.com",
+      "ticketType": "VIP",
+      "checkedIn": true,
+      "checkedInAt": "2026-06-11T05:22:15Z",
+      "gateChecked": "Cổng A"
+    },
+    {
+      "id": "TK-66551-01",
+      "bookingId": "BK-66551",
+      "eventId": "ev-01",
+      "eventTitle": "Đại Nhạc Hội 'Sóng Trẻ' 2026",
+      "customerName": "Nguyen Khanh Hoang",
+      "customerEmail": "hoangnk2712@gmail.com",
+      "ticketType": "Hạng Vé Thường (GA)",
+      "checkedIn": false,
+      "checkedInAt": null,
+      "gateChecked": null
+    },
+    {
+      "id": "TK-106288-01",
+      "bookingId": "BK-106288",
+      "eventId": "ev-01",
+      "eventTitle": "Đại Nhạc Hội 'Sóng Trẻ' 2026",
+      "customerName": "Nguyen Khanh Hoang",
+      "customerEmail": "hoangnk2712@gmail.com",
+      "ticketType": "Hạng Vé Thường (GA)",
+      "checkedIn": false,
+      "checkedInAt": null,
+      "gateChecked": null
+    }
+  ],
+  "transactions": [
+    {
+      "id": "3540613",
+      "gateway": "MB Bank",
+      "transactionDate": "2026-06-11 10:10:36",
+      "accountNumber": "VQRQAJQJY8278",
+      "transferType": "in",
+      "transferAmount": 2000,
+      "content": "Chuyen khoan thanh toan DH106288 tu dong",
+      "referenceCode": "REF76272357",
+      "code": "DH106288",
+      "createdAt": "2026-06-11T10:10:36.784Z"
+    },
+    {
+      "id": "6451768",
+      "gateway": "MBBank",
+      "transactionDate": "2026-06-11 09:34:07",
+      "accountNumber": "VQRQAJQJY8278",
+      "transferType": "in",
+      "transferAmount": 2000,
+      "content": "Chuyen khoan thanh toan DH665510 tu dong",
+      "referenceCode": "REF38878857",
+      "code": "DH665510",
+      "createdAt": "2026-06-11T09:34:07.549Z"
+    },
+    {
+      "id": "tx-sepay-1029",
+      "gateway": "MBBank",
+      "transactionDate": "2026-06-11 09:35:12",
+      "accountNumber": "VQRQAJQJY8278",
+      "transferType": "in",
+      "transferAmount": 4000,
+      "content": "Chuyển tiền mua vé DH829140 Minh Khang",
+      "referenceCode": "MBB23849182390",
+      "code": "DH829140",
+      "createdAt": "2026-06-11T02:35:12Z"
+    }
+  ]
+}

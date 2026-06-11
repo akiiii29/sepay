@@ -1,0 +1,8 @@
+{
+  "name": "Bán vé Tự động VietQR & SePay",
+  "description": "Hệ thống đặt vé, thanh toán tự động qua VietQR/SePay, gửi vé điện tử, quét mã QR kiểm tra vé tại cổng.",
+  "requestFramePermissions": [
+    "camera"
+  ],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
