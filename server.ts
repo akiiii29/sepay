@@ -166,7 +166,7 @@ async function startServer() {
       
       // Save Transaction Log
       const sepayTx: SePayTransaction = {
-        id: id || `sepay-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
+        id: id ? String(id) : `sepay-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
         gateway: gateway || "MockBank",
         transactionDate: transactionDate || new Date().toISOString(),
         accountNumber: accountNumber || "Unknown",
