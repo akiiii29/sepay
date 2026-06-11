@@ -613,8 +613,10 @@ export const db = {
       }
 
       if (status === 'PAID') {
-        // Send confirmation email with generated tickets from memory directly
-        await sendBookingEmail(txResult.updatedBooking, txResult.generatedTickets);
+        // Send confirmation email asynchronously in the background to prevent webhook timeout
+        sendBookingEmail(txResult.updatedBooking, txResult.generatedTickets).catch(err => {
+          console.error("[Background Email Error]: Failed to send booking email:", err);
+        });
       }
       
       return txResult.updatedBooking;
@@ -670,8 +672,10 @@ export const db = {
         }
         writeJson(data);
         
-        // Send email
-        await sendBookingEmail(data.bookings[index], generatedTickets);
+        // Send email asynchronously in the background to prevent response blocking
+        sendBookingEmail(data.bookings[index], generatedTickets).catch(err => {
+          console.error("[Background Email Error]: Failed to send booking email:", err);
+        });
       }
     } else if (status === 'CANCELLED' && prevStatus === 'PAID') {
       const booking = data.bookings[index];
