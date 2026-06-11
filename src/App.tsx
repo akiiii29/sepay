@@ -385,6 +385,20 @@ export default function App() {
     }
   };
 
+  const handleClearDataAction = async () => {
+    sounds.playBeepOk();
+    try {
+      const res = await fetch('/api/admin/clear-data', { method: 'POST' });
+      if (res.ok) {
+        await fetchAllData();
+        sounds.playSuccess();
+        alert("Đã xóa sạch toàn bộ đơn hàng, vé điện tử và giao dịch thanh toán. Các tài khoản người dùng và sự kiện vẫn được giữ nguyên!");
+      }
+    } catch (e) {
+      console.warn(e);
+    }
+  };
+
   // Reset checkout loop to buy another one
   const handleResetCheckoutFlow = () => {
     setSelectedEvent(null);
@@ -727,6 +741,7 @@ export default function App() {
               onManualApprove={handleManualApproveBooking}
               onManualCancel={handleManualCancelBooking}
               onResetDb={handleResetDatabaseAction}
+              onClearData={handleClearDataAction}
               isLoading={isLoading}
               users={users}
               onAddUser={handleAddUserRole}

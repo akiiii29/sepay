@@ -961,5 +961,49 @@ export const db = {
       }
     ];
     return writeJson(resetData);
+  },
+
+  clearTransactionsAndBookings: async (): Promise<boolean> => {
+    if (firestore) {
+      console.log("[Firebase]: Clearing bookings, tickets, and transactions...");
+      try {
+        const batch = firestore.batch();
+        
+        const bookings = await firestore.collection('bookings').get();
+        bookings.docs.forEach(doc => batch.delete(doc.ref));
+        
+        const tickets = await firestore.collection('tickets').get();
+        tickets.docs.forEach(doc => batch.delete(doc.ref));
+        
+        const txs = await firestore.collection('transactions').get();
+        txs.docs.forEach(doc => batch.delete(doc.ref));
+        
+        // Reset soldCount in all events to 0
+        const events = await firestore.collection('events').get();
+        events.docs.forEach(doc => {
+          const event = doc.data() as EventData;
+          const updatedTicketTypes = event.ticketTypes.map(t => ({ ...t, soldCount: 0 }));
+          batch.update(doc.ref, { ticketTypes: updatedTicketTypes });
+        });
+        
+        await batch.commit();
+        console.log("[Firebase]: Bookings, tickets, and transactions cleared successfully.");
+        return true;
+      } catch (err) {
+        console.error("[Firebase]: Clear transactions and bookings failed:", err);
+        return false;
+      }
+    }
+    
+    // Local DB Fallback
+    const data = readJson();
+    data.bookings = [];
+    data.tickets = [];
+    data.transactions = [];
+    data.events = data.events.map(event => ({
+      ...event,
+      ticketTypes: event.ticketTypes.map(t => ({ ...t, soldCount: 0 }))
+    }));
+    return writeJson(data);
   }
 };

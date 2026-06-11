@@ -24,6 +24,7 @@ interface AdminHubProps {
   onManualApprove: (bookingId: string) => void;
   onManualCancel: (bookingId: string) => void;
   onResetDb: () => void;
+  onClearData: () => void;
   isLoading: boolean;
   users: UserRoleData[];
   onAddUser: (email: string, role: 'admin' | 'staff') => Promise<{ success: boolean; error?: string }>;
@@ -40,6 +41,7 @@ export default function AdminHub({
   onManualApprove,
   onManualCancel,
   onResetDb,
+  onClearData,
   isLoading,
   users,
   onAddUser,
@@ -138,18 +140,33 @@ export default function AdminHub({
             <p className="text-slate-400 text-sm mt-1">Quản lý đặt vé, kiểm soát SePay Webhook tự động và đối soát khách hàng.</p>
           </div>
 
-          <button
-            onClick={() => {
-              if (window.confirm("Bạn có chắc muốn khôi phục dữ liệu hệ thống bán vé về trạng thái mặc định không?")) {
-                onResetDb();
-              }
-            }}
-            id="reset_db_btn"
-            className="flex items-center gap-2 bg-slate-800 hover:bg-slate-700 border border-slate-700 hover:border-slate-600 text-slate-300 font-semibold px-4 py-2.5 rounded-xl text-xs transition duration-200 shadow-sm"
-          >
-            <RefreshCcw className="w-3.5 h-3.5" />
-            Khôi phục dữ liệu mẫu
-          </button>
+          <div className="flex flex-wrap gap-2.5">
+            <button
+              onClick={() => {
+                if (window.confirm("Bạn có chắc chắn muốn XÓA SẠCH toàn bộ bookings, tickets và transactions không? (Tài khoản users và events vẫn sẽ được giữ lại)")) {
+                  onClearData();
+                }
+              }}
+              id="clear_data_btn"
+              className="flex items-center gap-2 bg-rose-900/60 hover:bg-rose-900/80 border border-rose-800 text-rose-105 font-semibold px-4 py-2.5 rounded-xl text-xs transition duration-200 shadow-sm"
+            >
+              <Trash2 className="w-3.5 h-3.5 text-rose-300" />
+              Xóa sạch giao dịch & vé
+            </button>
+
+            <button
+              onClick={() => {
+                if (window.confirm("Bạn có chắc muốn khôi phục dữ liệu hệ thống bán vé về trạng thái mặc định không?")) {
+                  onResetDb();
+                }
+              }}
+              id="reset_db_btn"
+              className="flex items-center gap-2 bg-slate-800 hover:bg-slate-700 border border-slate-700 hover:border-slate-600 text-slate-300 font-semibold px-4 py-2.5 rounded-xl text-xs transition duration-200 shadow-sm"
+            >
+              <RefreshCcw className="w-3.5 h-3.5" />
+              Khôi phục dữ liệu mẫu
+            </button>
+          </div>
         </div>
       </div>
 

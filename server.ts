@@ -327,6 +327,16 @@ async function startServer() {
     }
   });
 
+  // 11b. Clear Bookings, Tickets, and Transactions (preserving Events and Users)
+  app.post('/api/admin/clear-data', async (req: Request, res: Response) => {
+    try {
+      const ok = await db.clearTransactionsAndBookings();
+      res.json({ success: ok, message: "Đã xóa sạch dữ liệu đơn hàng, vé và giao dịch thanh toán." });
+    } catch (e: any) {
+      res.status(500).json({ error: e.message });
+    }
+  });
+
   // 12. User Authentication (Đăng Nhập)
   app.post('/api/auth/login', async (req: Request, res: Response) => {
     try {
