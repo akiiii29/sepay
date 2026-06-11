@@ -130,9 +130,8 @@ export async function sendBookingEmail(booking: BookingData, tickets: TicketData
         auth: {
           user: smtpUser,
           pass: smtpPass
-        },
-        family: 4 // Force IPv4 to bypass ENETUNREACH on IPv6
-      } as any);
+        }
+      });
 
       const mailOptions = {
         from: `"${booking.eventTitle}" <${smtpFrom}>`,

@@ -1,10 +1,12 @@
 import express, { Request, Response } from 'express';
 import path from 'path';
 import dotenv from 'dotenv';
+import dns from 'dns';
 import { createServer as createViteServer } from 'vite';
 import { db, BookingData, SePayTransaction } from './src/server-db';
 
 dotenv.config();
+dns.setDefaultResultOrder('ipv4first'); // Force Node.js to prefer IPv4 over IPv6 globally
 
 async function startServer() {
   const app = express();
