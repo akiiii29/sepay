@@ -122,7 +122,42 @@ export async function sendBookingEmail(booking: BookingData, tickets: TicketData
       </div>
     `;
 
-    if (smtpHost && smtpUser && smtpPass) {
+    const resendApiKey = process.env.RESEND_API_KEY;
+    const resendFrom = process.env.RESEND_FROM || smtpFrom || 'onboarding@resend.dev';
+
+    if (resendApiKey) {
+      console.log(`[Resend Email Service]: Sending email to ${booking.customerEmail} via Resend...`);
+      const resendAttachments = attachments.map(att => ({
+        filename: att.filename,
+        content: att.content.toString('base64'),
+        contentId: att.cid
+      }));
+
+      const fromFormatted = resendFrom.includes('<') ? resendFrom : `"${booking.eventTitle}" <${resendFrom}>`;
+
+      const response = await fetch('https://api.resend.com/emails', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${resendApiKey}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          from: fromFormatted,
+          to: [booking.customerEmail],
+          subject: `[Vé Điện Tử] Xác nhận đặt vé thành công - Đơn hàng ${booking.id}`,
+          html: emailBody,
+          attachments: resendAttachments
+        })
+      });
+
+      if (!response.ok) {
+        const errText = await response.text();
+        throw new Error(`Resend API returned status ${response.status}: ${errText}`);
+      }
+
+      const resData: any = await response.json();
+      console.log(`[Resend Email Service]: Email sent successfully to ${booking.customerEmail}. Email ID: ${resData.id}`);
+    } else if (smtpHost && smtpUser && smtpPass) {
       const transporter = nodemailer.createTransport({
         host: smtpHost,
         port: smtpPort,
@@ -145,7 +180,7 @@ export async function sendBookingEmail(booking: BookingData, tickets: TicketData
       console.log(`[Email Service]: Email sent successfully to ${booking.customerEmail}`);
     } else {
       console.log("\n==========================================================================");
-      console.log("[Email Service WARNING]: SMTP configuration not found in .env.");
+      console.log("[Email Service WARNING]: Neither RESEND_API_KEY nor SMTP configuration found in .env.");
       console.log("[Email Service SIMULATION MODE ENABLED]");
       console.log(`- To: ${booking.customerEmail}`);
       console.log(`- Subject: [Vé Điện Tử] Xác nhận đặt vé thành công - Đơn hàng ${booking.id}`);
