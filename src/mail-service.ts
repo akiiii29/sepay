@@ -130,7 +130,10 @@ export async function sendBookingEmail(booking: BookingData, tickets: TicketData
       const resendAttachments = attachments.map(att => ({
         filename: att.filename,
         content: att.content.toString('base64'),
-        contentId: att.cid
+        contentId: att.cid,
+        content_id: att.cid,
+        contentType: 'image/png',
+        content_type: 'image/png'
       }));
 
       const fromFormatted = resendFrom.includes('<') ? resendFrom : `"${booking.eventTitle}" <${resendFrom}>`;
